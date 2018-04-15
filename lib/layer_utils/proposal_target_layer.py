@@ -20,37 +20,63 @@ def proposal_target_layer(rpn_rois, rpn_scores, gt_boxes, _num_classes):
   Assign object detection proposals to ground-truth targets. Produces proposal
   classification labels and bounding-box regression targets.
   """
+  rois = []
+  roi_scores = []
+  labels = []
+  bbox_targets = []
+  bbox_inside_weights = []
+  bbox_outside_weights = []
 
-  # Proposal ROIs (0, x1, y1, x2, y2) coming from RPN
-  # (i.e., rpn.proposal_layer.ProposalLayer), or any other source
-  all_rois = rpn_rois
-  all_scores = rpn_scores
+  for im_i in np.unique(gt_boxes[:, 0]):
+    # Proposal ROIs (im_i, x1, y1, x2, y2) coming from RPN
+    # (i.e., rpn.proposal_layer.ProposalLayer), or any other source
+    inds = np.where(rpn_rois[:, 0] == im_i)[0]
+    all_rois = rpn_rois[inds]
+    all_scores = rpn_scores[inds]
 
-  # Include ground-truth boxes in the set of candidate rois
-  if cfg.TRAIN.USE_GT:
-    zeros = np.zeros((gt_boxes.shape[0], 1), dtype=gt_boxes.dtype)
-    all_rois = np.vstack(
-      (all_rois, np.hstack((zeros, gt_boxes[:, :-1])))
-    )
-    # not sure if it a wise appending, but anyway i am not using it
-    all_scores = np.vstack((all_scores, zeros))
+    inds = np.where(gt_boxes[:, 0] == im_i)[0]
+    gt_boxes_im_i = gt_boxes[inds, 1:]
 
-  num_images = 1
-  rois_per_image = cfg.TRAIN.BATCH_SIZE / num_images
-  fg_rois_per_image = np.round(cfg.TRAIN.FG_FRACTION * rois_per_image)
+    # Include ground-truth boxes in the set of candidate rois
+    if cfg.TRAIN.USE_GT:
+      im_inds = im_i * np.ones((gt_boxes_im_i.shape[0], 1), dtype=gt_boxes_im_i.dtype)
+      zeros = np.zeros((gt_boxes_im_i.shape[0], 1), dtype=gt_boxes_im_i.dtype)
+      all_rois = np.vstack(
+        (all_rois, np.hstack((im_inds, gt_boxes_im_i[:, :-1])))
+      )
+      # not sure if it a wise appending, but anyway i am not using it
+      all_scores = np.vstack((all_scores, zeros))
 
-  # Sample rois with classification labels and bounding box regression
-  # targets
-  labels, rois, roi_scores, bbox_targets, bbox_inside_weights = _sample_rois(
-    all_rois, all_scores, gt_boxes, fg_rois_per_image,
-    rois_per_image, _num_classes)
+    num_images = cfg.TRAIN.IMS_PER_BATCH
+    rois_per_image = cfg.TRAIN.BATCH_SIZE / num_images
+    fg_rois_per_image = np.round(cfg.TRAIN.FG_FRACTION * rois_per_image)
 
-  rois = rois.reshape(-1, 5)
-  roi_scores = roi_scores.reshape(-1)
-  labels = labels.reshape(-1, 1)
-  bbox_targets = bbox_targets.reshape(-1, _num_classes * 4)
-  bbox_inside_weights = bbox_inside_weights.reshape(-1, _num_classes * 4)
-  bbox_outside_weights = np.array(bbox_inside_weights > 0).astype(np.float32)
+    # Sample rois with classification labels and bounding box regression
+    # targets
+    labels_im_i, rois_im_i, roi_scores_im_i, bbox_targets_im_i, bbox_inside_weights_im_i = _sample_rois(
+      all_rois, all_scores, gt_boxes_im_i, fg_rois_per_image,
+      rois_per_image, _num_classes)
+
+    rois_im_i = rois_im_i.reshape(-1, 5)
+    roi_scores_im_i = roi_scores_im_i.reshape(-1)
+    labels_im_i = labels_im_i.reshape(-1, 1)
+    bbox_targets_im_i = bbox_targets_im_i.reshape(-1, _num_classes * 4)
+    bbox_inside_weights_im_i = bbox_inside_weights_im_i.reshape(-1, _num_classes * 4)
+    bbox_outside_weights_im_i = np.array(bbox_inside_weights_im_i > 0).astype(np.float32)
+
+    rois.append(rois_im_i)
+    roi_scores.append(roi_scores_im_i)
+    labels.append(labels_im_i)
+    bbox_targets.append(bbox_targets_im_i)
+    bbox_inside_weights.append(bbox_inside_weights_im_i)
+    bbox_outside_weights.append(bbox_outside_weights_im_i)
+
+  rois = np.concatenate(rois)
+  roi_scores = np.concatenate(roi_scores)
+  labels = np.concatenate(labels)
+  bbox_targets = np.concatenate(bbox_targets)
+  bbox_inside_weights =np.concatenate(bbox_inside_weights)
+  bbox_outside_weights = np.concatenate(bbox_outside_weights)
 
   return rois, roi_scores, labels, bbox_targets, bbox_inside_weights, bbox_outside_weights
 

@@ -69,9 +69,11 @@ def _draw_single_box(image, xmin, ymin, xmax, ymax, display_str, font, color='bl
   return image
 
 def draw_bounding_boxes(image, gt_boxes, im_info):
-  num_boxes = gt_boxes.shape[0]
-  gt_boxes_new = gt_boxes.copy()
-  gt_boxes_new[:,:4] = np.round(gt_boxes_new[:,:4].copy() / im_info[2])
+  inds = np.where(gt_boxes[:, 0] == 0)[0]  # only image one shown
+  gt_boxes_new = gt_boxes[inds, 1:].copy()
+  num_boxes = np.alen(inds)
+
+  gt_boxes_new[:, :4] = np.round(gt_boxes_new[:, :4].copy() / im_info[0, 2])
   disp_image = Image.fromarray(np.uint8(image[0]))
 
   for i in range(num_boxes):

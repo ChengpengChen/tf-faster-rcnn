@@ -21,37 +21,43 @@ def proposal_top_layer(rpn_cls_prob, rpn_bbox_pred, im_info, _feat_stride, ancho
   """
   rpn_top_n = cfg.TEST.RPN_TOP_N
 
-  scores = rpn_cls_prob[:, :, :, num_anchors:]
+  blob = []
+  scores = []
+  # Get the scores and bounding boxes
+  for im_i in np.arange(im_info.shape[0]):
+    scores_im_i = rpn_cls_prob[im_i, :, :, num_anchors:].copy().reshape((-1, 1))
+    rpn_bbox_pred_im_i = rpn_bbox_pred[im_i].copy().reshape((-1, 4))
 
-  rpn_bbox_pred = rpn_bbox_pred.reshape((-1, 4))
-  scores = scores.reshape((-1, 1))
+    length = scores_im_i.shape[0]
+    if length < rpn_top_n:
+      # Random selection, maybe unnecessary and loses good proposals
+      # But such case rarely happens
+      top_inds = npr.choice(length, size=rpn_top_n, replace=True)
+    else:
+      top_inds = scores_im_i.argsort(0)[::-1]
+      top_inds = top_inds[:rpn_top_n]
+      top_inds = top_inds.reshape(rpn_top_n, )
 
-  length = scores.shape[0]
-  if length < rpn_top_n:
-    # Random selection, maybe unnecessary and loses good proposals
-    # But such case rarely happens
-    top_inds = npr.choice(length, size=rpn_top_n, replace=True)
-  else:
-    top_inds = scores.argsort(0)[::-1]
-    top_inds = top_inds[:rpn_top_n]
-    top_inds = top_inds.reshape(rpn_top_n, )
+    # Do the selection here
+    anchors = anchors[top_inds, :]
+    rpn_bbox_pred_im_i = rpn_bbox_pred_im_i[top_inds, :]
+    scores_im_i = scores_im_i[top_inds]
+    scores.append(scores_im_i)
 
-  # Do the selection here
-  anchors = anchors[top_inds, :]
-  rpn_bbox_pred = rpn_bbox_pred[top_inds, :]
-  scores = scores[top_inds]
+    # Convert anchors into proposals via bbox transformations
+    proposals = bbox_transform_inv(anchors, rpn_bbox_pred_im_i)
 
-  # Convert anchors into proposals via bbox transformations
-  proposals = bbox_transform_inv(anchors, rpn_bbox_pred)
+    # Clip predicted boxes to image
+    proposals = clip_boxes(proposals, im_info[im_i, :2])
 
-  # Clip predicted boxes to image
-  proposals = clip_boxes(proposals, im_info[:2])
+    # multi image as input
+    batch_inds = im_i * np.ones((proposals.shape[0], 1), dtype=np.float32)
+    blob_im_i = np.hstack((batch_inds, proposals.astype(np.float32, copy=False)))
+    blob.append(blob_im_i)
 
-  # Output rois blob
-  # Our RPN implementation only supports a single input image, so all
-  # batch inds are 0
-  batch_inds = np.zeros((proposals.shape[0], 1), dtype=np.float32)
-  blob = np.hstack((batch_inds, proposals.astype(np.float32, copy=False)))
+  scores = np.concatenate(scores)
+  blob = np.concatenate(blob)
+
   return blob, scores
 
 

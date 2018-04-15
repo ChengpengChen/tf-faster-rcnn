@@ -41,7 +41,7 @@ class Network(object):
     # add back mean
     image = self._image + cfg.PIXEL_MEANS
     # BGR to RGB (opencv uses BGR)
-    resized = tf.image.resize_bilinear(image, tf.to_int32(self._im_info[:2] / self._im_info[2]))
+    resized = tf.image.resize_bilinear(image, tf.to_int32(self._im_info[0, :2] / self._im_info[0, 2]))
     self._gt_image = tf.reverse(resized, axis=[-1])
 
   def _add_gt_image_summary(self):
@@ -72,7 +72,7 @@ class Network(object):
       to_caffe = tf.transpose(bottom, [0, 3, 1, 2])
       # then force it to have channel 2
       reshaped = tf.reshape(to_caffe,
-                            tf.concat(axis=0, values=[[1, num_dim, -1], [input_shape[2]]]))
+                            tf.concat(axis=0, values=[[cfg.TRAIN.IMS_PER_BATCH, num_dim, -1], [input_shape[2]]]))
       # then swap the channel back
       to_tf = tf.transpose(reshaped, [0, 2, 3, 1])
       return to_tf
@@ -167,10 +167,10 @@ class Network(object):
         [tf.float32, tf.float32, tf.float32, tf.float32],
         name="anchor_target")
 
-      rpn_labels.set_shape([1, 1, None, None])
-      rpn_bbox_targets.set_shape([1, None, None, self._num_anchors * 4])
-      rpn_bbox_inside_weights.set_shape([1, None, None, self._num_anchors * 4])
-      rpn_bbox_outside_weights.set_shape([1, None, None, self._num_anchors * 4])
+      rpn_labels.set_shape([cfg.TRAIN.IMS_PER_BATCH, 1, None, None])
+      rpn_bbox_targets.set_shape([cfg.TRAIN.IMS_PER_BATCH, None, None, self._num_anchors * 4])
+      rpn_bbox_inside_weights.set_shape([cfg.TRAIN.IMS_PER_BATCH, None, None, self._num_anchors * 4])
+      rpn_bbox_outside_weights.set_shape([cfg.TRAIN.IMS_PER_BATCH, None, None, self._num_anchors * 4])
 
       rpn_labels = tf.to_int32(rpn_labels, name="to_int32")
       self._anchor_targets['rpn_labels'] = rpn_labels
@@ -210,8 +210,8 @@ class Network(object):
   def _anchor_component(self):
     with tf.variable_scope('ANCHOR_' + self._tag) as scope:
       # just to get the shape right
-      height = tf.to_int32(tf.ceil(self._im_info[0] / np.float32(self._feat_stride[0])))
-      width = tf.to_int32(tf.ceil(self._im_info[1] / np.float32(self._feat_stride[0])))
+      height = tf.to_int32(tf.ceil(tf.reduce_max(self._im_info[:, 0]) / np.float32(self._feat_stride[0])))
+      width = tf.to_int32(tf.ceil(tf.reduce_max(self._im_info[:, 1]) / np.float32(self._feat_stride[0])))
       if cfg.USE_E2E_TF:
         anchors, anchor_length = generate_anchors_pre_tf(
           height,
@@ -385,9 +385,9 @@ class Network(object):
 
   def create_architecture(self, mode, num_classes, tag=None,
                           anchor_scales=(8, 16, 32), anchor_ratios=(0.5, 1, 2)):
-    self._image = tf.placeholder(tf.float32, shape=[1, None, None, 3])
-    self._im_info = tf.placeholder(tf.float32, shape=[3])
-    self._gt_boxes = tf.placeholder(tf.float32, shape=[None, 5])
+    self._image = tf.placeholder(tf.float32, shape=[cfg.TRAIN.IMS_PER_BATCH, None, None, 3])
+    self._im_info = tf.placeholder(tf.float32, shape=[cfg.TRAIN.IMS_PER_BATCH, 3])
+    self._gt_boxes = tf.placeholder(tf.float32, shape=[None, 6])
     self._tag = tag
 
     self._num_classes = num_classes

@@ -29,25 +29,30 @@ def get_minibatch(roidb, num_classes):
   # Get the input image blob, formatted for caffe
   im_blob, im_scales = _get_image_blob(roidb, random_scale_inds)
 
-  blobs = {'data': im_blob}
+  blobs = {'data': im_blob, 'im_info': [], 'gt_boxes': []}
 
-  assert len(im_scales) == 1, "Single batch only"
-  assert len(roidb) == 1, "Single batch only"
-  
-  # gt boxes: (x1, y1, x2, y2, cls)
-  if cfg.TRAIN.USE_ALL_GT:
-    # Include all ground truth boxes
-    gt_inds = np.where(roidb[0]['gt_classes'] != 0)[0]
-  else:
-    # For the COCO ground truth boxes, exclude the ones that are ''iscrowd'' 
-    gt_inds = np.where(roidb[0]['gt_classes'] != 0 & np.all(roidb[0]['gt_overlaps'].toarray() > -1.0, axis=1))[0]
-  gt_boxes = np.empty((len(gt_inds), 5), dtype=np.float32)
-  gt_boxes[:, 0:4] = roidb[0]['boxes'][gt_inds, :] * im_scales[0]
-  gt_boxes[:, 4] = roidb[0]['gt_classes'][gt_inds]
-  blobs['gt_boxes'] = gt_boxes
-  blobs['im_info'] = np.array(
-    [im_blob.shape[1], im_blob.shape[2], im_scales[0]],
-    dtype=np.float32)
+  for im_i in np.arange(num_images):
+    # assert len(im_scales) == 1, "Single batch only"
+    # assert len(roidb) == 1, "Single batch only"
+
+    # gt boxes: (x1, y1, x2, y2, cls)
+    if cfg.TRAIN.USE_ALL_GT:
+      # Include all ground truth boxes
+      gt_inds = np.where(roidb[im_i]['gt_classes'] != 0)[0]
+    else:
+      # For the COCO ground truth boxes, exclude the ones that are ''iscrowd''
+      gt_inds = np.where(roidb[im_i]['gt_classes'] != 0 & np.all(roidb[im_i]['gt_overlaps'].toarray() > -1.0, axis=1))[0]
+    gt_boxes = np.empty((len(gt_inds), 6), dtype=np.float32)
+    gt_boxes[:, 0] = im_i  # batch inds
+    gt_boxes[:, 1:5] = roidb[im_i]['boxes'][gt_inds, :] * im_scales[im_i]
+    gt_boxes[:, 5] = roidb[im_i]['gt_classes'][gt_inds]
+    blobs['gt_boxes'].append(np.reshape(gt_boxes, (-1, 6)))
+    im_info_temp = np.array(
+      [im_blob.shape[1], im_blob.shape[2], im_scales[im_i]],
+      dtype=np.float32)
+    blobs['im_info'].append(np.reshape(im_info_temp, (-1, 3)))
+  blobs['gt_boxes'] = np.concatenate(blobs['gt_boxes'])
+  blobs['im_info'] = np.concatenate(blobs['im_info'])
 
   return blobs
 

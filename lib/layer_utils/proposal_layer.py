@@ -23,32 +23,40 @@ def proposal_layer(rpn_cls_prob, rpn_bbox_pred, im_info, cfg_key, _feat_stride, 
   post_nms_topN = cfg[cfg_key].RPN_POST_NMS_TOP_N
   nms_thresh = cfg[cfg_key].RPN_NMS_THRESH
 
+  blob = []
+  scores = []
   # Get the scores and bounding boxes
-  scores = rpn_cls_prob[:, :, :, num_anchors:]
-  rpn_bbox_pred = rpn_bbox_pred.reshape((-1, 4))
-  scores = scores.reshape((-1, 1))
-  proposals = bbox_transform_inv(anchors, rpn_bbox_pred)
-  proposals = clip_boxes(proposals, im_info[:2])
+  for im_i in np.arange(im_info.shape[0]):
+    scores_im_i = rpn_cls_prob[im_i, :, :, num_anchors:].copy().reshape((-1, 1))
+    rpn_bbox_pred_im_i = rpn_bbox_pred[im_i].copy().reshape((-1, 4))
 
-  # Pick the top region proposals
-  order = scores.ravel().argsort()[::-1]
-  if pre_nms_topN > 0:
-    order = order[:pre_nms_topN]
-  proposals = proposals[order, :]
-  scores = scores[order]
+    proposals = bbox_transform_inv(anchors, rpn_bbox_pred_im_i)
+    proposals = clip_boxes(proposals, im_info[im_i, :2])
 
-  # Non-maximal suppression
-  keep = nms(np.hstack((proposals, scores)), nms_thresh)
+    # Pick the top region proposals
+    order = scores_im_i.ravel().argsort()[::-1]
+    if pre_nms_topN > 0:
+      order = order[:pre_nms_topN]
+    proposals = proposals[order, :]
+    scores_im_i = scores_im_i[order]
 
-  # Pick th top region proposals after NMS
-  if post_nms_topN > 0:
-    keep = keep[:post_nms_topN]
-  proposals = proposals[keep, :]
-  scores = scores[keep]
+    # Non-maximal suppression
+    keep = nms(np.hstack((proposals, scores_im_i)), nms_thresh)
 
-  # Only support single image as input
-  batch_inds = np.zeros((proposals.shape[0], 1), dtype=np.float32)
-  blob = np.hstack((batch_inds, proposals.astype(np.float32, copy=False)))
+    # Pick th top region proposals after NMS
+    if post_nms_topN > 0:
+      keep = keep[:post_nms_topN]
+    proposals = proposals[keep, :]
+    scores_im_i = scores_im_i[keep]
+    scores.append(scores_im_i)
+
+    # multi image as input
+    batch_inds = im_i * np.ones((proposals.shape[0], 1), dtype=np.float32)
+    blob_im_i = np.hstack((batch_inds, proposals.astype(np.float32, copy=False)))
+    blob.append(blob_im_i)
+
+  scores = np.concatenate(scores)
+  blob = np.concatenate(blob)
 
   return blob, scores
 
