@@ -5,7 +5,7 @@ Forked version for multi image traing support!
   ./experiments/scripts/test_faster_rcnn.sh $GPU_ID pascal_voc_0712 res101 TRAIN.IMS_PER_BATCH 2
   ```
 
-**Note**: The batch size settings of RPN and RCNN (TRAIN.BATCH_SIZE and TRAIN.RPN_BATCHSIZE) both indicate for all images, that is the batch size per image is TRAIN.BATCH_SIZE / TRAIN.IMS_PER_BATCH.
+**Note**: The batch size settings of RPN and RCNN (``TRAIN.BATCH_SIZE`` and ``TRAIN.RPN_BATCHSIZE``) both indicate for all images, that is the batch size per image is ``TRAIN.BATCH_SIZE / TRAIN.IMS_PER_BATCH``.
 
 # tf-faster-rcnn
 A Tensorflow implementation of faster RCNN detection framework by Xinlei Chen (xinleic@cs.cmu.edu). This repository is based on the python Caffe implementation of faster RCNN available [here](https://github.com/rbgirshick/py-faster-rcnn).
