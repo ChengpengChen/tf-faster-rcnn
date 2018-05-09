@@ -8,6 +8,16 @@ Forked version for multi image traing support!
 **Note**: 
   - The batch size settings of RPN and RCNN (``TRAIN.BATCH_SIZE`` and ``TRAIN.RPN_BATCHSIZE``) both indicate for all images, that is the batch size per image is ``TRAIN.BATCH_SIZE / TRAIN.IMS_PER_BATCH``.
   - set ``TRAIN.USE_E2E_TF False`` for the code does not support this mode yet.
+  - During test, ``TRAIN.IMS_PER_BATCH`` is only used to generate the ``tag`` for finding and loading the corresponding model. Then it is reset to ``1``; that is, ``TRAIN.IMS_PER_BATCH`` is actually ``1`` during test.
+
+### comparison of results
+With Resnet101 (last ``conv4``, coco, 350k/490k):
+  | IMS_PER_BATCH  | BATCH_SIZE | base lr | mAP |
+  | ------------- | ------------- |------------- |
+  | 1 | 256 | 0.0001 | **31.1** |
+  | 2 | 512 | 0.0001 | **34.0** |
+  | 2 | 512 | 0.0002 | **34.5** |
+
 
 # tf-faster-rcnn
 A Tensorflow implementation of faster RCNN detection framework by Xinlei Chen (xinleic@cs.cmu.edu). This repository is based on the python Caffe implementation of faster RCNN available [here](https://github.com/rbgirshick/py-faster-rcnn).

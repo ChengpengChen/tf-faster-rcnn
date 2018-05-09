@@ -61,6 +61,11 @@ if __name__ == '__main__':
   print('Called with args:')
   print(args)
 
+  # reset TRAIN.IMS_PER_BATCH to 1 during test
+  if 'TRAIN.IMS_PER_BATCH' in args.set_cfgs:
+      ind = [i for i, v in enumerate(args.set_cfgs) if v == 'TRAIN.IMS_PER_BATCH'][0]
+      args.set_cfgs[ind+1] = '1'
+
   if args.cfg_file is not None:
     cfg_from_file(args.cfg_file)
   if args.set_cfgs is not None:
