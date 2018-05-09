@@ -12,6 +12,7 @@ Forked version for multi image traing support!
 
 ### comparison of results
 With Resnet101 (last ``conv4``, coco, 350k/490k):
+
   | IMS_PER_BATCH  | BATCH_SIZE | base lr | speed | mAP |
   | ------------- | ------------- | ------------- | ------------- | ------------- |
   | 1 | 256 | 0.0001 | 0.63s/iter | **31.1** |
