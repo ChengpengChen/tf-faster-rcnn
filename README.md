@@ -19,6 +19,16 @@ With Resnet101 (last ``conv4``, coco, 350k/490k):
   | 2 | 512 | 0.0001 | 0.92s/iter | **34.0** |
   | 2 | 512 | 0.0002 | 0.92s/iter | **34.5** |
 
+With Resnet01 (last ``conv4``, coco):
+
+  | IMS_PER_BATCH  | BATCH_SIZE | base lr | iter | mAP |
+  | ------------- | ------------- | ------------- | ------------- | ------------- |
+  | 1 | 256 | 0.0001 | 900k/1190k | **35.4** |
+  | 2 | 512 | 0.0002 | 450k/595k | **35.3** |
+
+**Note**: 
+  - Following the linear rate, when ``TRAIN.IMS_PER_BATCH`` changed to ``2``, we double the base learning rate and halve the iteration steps. As the table shown, we get a comparable performance and much less train time.
+  - The result **35.4** of ``900k/1190k`` is taken from the original implementation.
 
 # tf-faster-rcnn
 A Tensorflow implementation of faster RCNN detection framework by Xinlei Chen (xinleic@cs.cmu.edu). This repository is based on the python Caffe implementation of faster RCNN available [here](https://github.com/rbgirshick/py-faster-rcnn).
