@@ -50,7 +50,7 @@ __C.TRAIN.USE_GT = False
 
 # Whether to use aspect-ratio grouping of training images, introduced merely for saving
 # GPU memory
-__C.TRAIN.ASPECT_GROUPING = False
+__C.TRAIN.ASPECT_GROUPING = True
 
 # The number of snapshots kept, older ones are deleted to save space
 __C.TRAIN.SNAPSHOT_KEPT = 3
@@ -158,6 +158,64 @@ __C.TRAIN.RPN_POSITIVE_WEIGHT = -1.0
 # Whether to use all ground truth bounding boxes for training, 
 # For COCO, setting USE_ALL_GT to False will exclude boxes that are flagged as ''iscrowd''
 __C.TRAIN.USE_ALL_GT = True
+
+# to enable warm up learning rate setting
+__C.TRAIN.WARMUP = False
+# the lr during warm up
+__C.TRAIN.WARMUP_LR = 0.000125
+# the step of warm up
+__C.TRAIN.WARMUP_STEP = 4000
+
+
+#
+# for Focal Loss in RPN
+#
+# enable focal loss in rpn, affect (1) anchor sample pro, (2) loss calculation
+__C.TRAIN.RPN_FL_ENABLE = False
+
+# the number of pos selected, set -1 to select all valid anchor
+__C.TRAIN.RPN_FL_FG_NUM = -1
+
+# the neg/pos ratio for anchor sample for cls and reg, set -1 to select all valid anchor
+__C.TRAIN.RPN_FL_RATIO = -1
+
+# SoftmaxFocalLoss or SigmoidFocalLoss, like RetinaNet (caffe2)
+# SigmoidFocalLoss can only be applied to focal loss mode
+# when changed to SigmoidFocalLoss mode, the output of the rpn_cls should be changed to only ONE element
+# instead of the original one (two elements, bg/fg). 05/17/2018
+__C.TRAIN.RPN_FL_SOFTMAX = True
+
+# lambda for fl
+__C.TRAIN.RPN_FL_LAMBDA = 2.0
+
+# alpha for fl
+__C.TRAIN.RPN_FL_ALPHA = 0.25
+
+# init bias with 'prior', like RetinaNet (caffe2), set -1 to ignore it
+__C.TRAIN.RPN_INIT_BIAS_PRIOR = 0.01
+
+# to decrease the lr of the rpn branch
+__C.TRAIN.RPN_LR_SCALE = 1.0
+
+# the scale for cls focal loss
+__C.TRAIN.RPN_FL_SCALE = 0.1
+
+# to combine the focal loss and cross entropy,
+# need to change the anchor target layer and combine the loss
+__C.TRAIN.RPN_FL_CE_FUSION = False
+
+# to decouple cls and reg tasks in RPN
+__C.TRAIN.RPN_DECOUPLE = False
+
+# to evaluate the recall of rpn
+__C.RPN_EVAL_CLS_AGNOSTIC = False
+
+# to scale the reg loss of rpn
+__C.TRAIN.RPN_LOSS_BOX_SCALE = 1.0
+
+# to select the reg branch of rpn, sampled (ce, True) or all (fl, False), only applied in fusion mode
+__C.TRAIN.RPN_FUSION_CE_OR_FL = True
+
 
 #
 # Testing options

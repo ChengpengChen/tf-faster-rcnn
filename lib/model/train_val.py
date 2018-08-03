@@ -137,6 +137,9 @@ class SolverWrapper(object):
             scale = 1.
             if cfg.TRAIN.DOUBLE_BIAS and '/biases:' in var.name:
               scale *= 2.
+            # decrease the lr of the rpn branch
+            if 0 < cfg.TRAIN.RPN_LR_SCALE < 1 and '/rpn' in var.name:
+              scale *= cfg.TRAIN.RPN_LR_SCALE
             if not np.allclose(scale, 1.0):
               grad = tf.multiply(grad, scale)
             final_gvs.append((grad, var))
@@ -199,6 +202,22 @@ class SolverWrapper(object):
     rate = cfg.TRAIN.LEARNING_RATE
     stepsizes = list(cfg.TRAIN.STEPSIZE)
 
+    if cfg.TRAIN.RPN_FL_ENABLE and cfg.TRAIN.RPN_INIT_BIAS_PRIOR > 0:
+      prior_prob = cfg.TRAIN.RPN_INIT_BIAS_PRIOR
+      rpn_cls_score_dim = 2 if cfg.TRAIN.RPN_FL_SOFTMAX else 1
+      bias_init = np.ones(rpn_cls_score_dim*len(cfg.ANCHOR_SCALES)*len(cfg.ANCHOR_RATIOS)) * \
+                  (-np.log((1 - prior_prob) / prior_prob))
+
+      bias_name = 'vgg_16/rpn_cls_score/biases'
+      bias_variable = [v for v in variables if bias_name in v.name]
+
+      assert len(bias_variable) == 2  # include the momentum term
+      bias_variable = bias_variable[0]
+
+      sess.run(tf.assign(bias_variable, bias_init))
+
+      print('done initial the bias of specific rpn branch')
+
     return rate, last_snapshot_iter, stepsizes, np_paths, ss_paths
 
   def restore(self, sess, sfile, nfile):
@@ -244,6 +263,9 @@ class SolverWrapper(object):
     self.data_layer = RoIDataLayer(self.roidb, self.imdb.num_classes)
     self.data_layer_val = RoIDataLayer(self.valroidb, self.imdb.num_classes, random=True)
 
+    assert (not cfg.TRAIN.WARMUP) or (cfg.TRAIN.WARMUP and cfg.TRAIN.WARMUP_STEP < list(cfg.TRAIN.STEPSIZE)[0]), \
+      'warm up step should not larger than stepsize'
+
     # Construct the computation graph
     lr, train_op = self.construct_graph(sess)
 
@@ -264,7 +286,16 @@ class SolverWrapper(object):
     stepsizes.append(max_iters)
     stepsizes.reverse()
     next_stepsize = stepsizes.pop()
+    # set the warm up learning rate
+    if cfg.TRAIN.WARMUP and cfg.TRAIN.WARMUP_STEP >= iter:
+      sess.run(tf.assign(lr, cfg.TRAIN.WARMUP_LR))
+      assert cfg.TRAIN.WARMUP_STEP < next_stepsize, 'warm up step should not larger than stepsize'
+
     while iter < max_iters + 1:
+      # resume to regular learning scheduler
+      if cfg.TRAIN.WARMUP and iter == cfg.TRAIN.WARMUP_STEP + 1:
+        sess.run(tf.assign(lr, cfg.TRAIN.LEARNING_RATE))
+
       # Learning rate
       if iter == next_stepsize + 1:
         # Add snapshot here before reducing the learning rate

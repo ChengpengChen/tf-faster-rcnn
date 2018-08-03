@@ -27,7 +27,8 @@ def proposal_layer(rpn_cls_prob, rpn_bbox_pred, im_info, cfg_key, _feat_stride, 
   scores = []
   # Get the scores and bounding boxes
   for im_i in np.arange(im_info.shape[0]):
-    scores_im_i = rpn_cls_prob[im_i, :, :, num_anchors:].copy().reshape((-1, 1))
+    scores_ind_start = num_anchors if cfg.TRAIN.RPN_FL_SOFTMAX else 0
+    scores_im_i = rpn_cls_prob[im_i, :, :, scores_ind_start:].copy().reshape((-1, 1))
     rpn_bbox_pred_im_i = rpn_bbox_pred[im_i].copy().reshape((-1, 4))
 
     proposals = bbox_transform_inv(anchors, rpn_bbox_pred_im_i)

@@ -161,11 +161,27 @@ class Network(object):
 
   def _anchor_target_layer(self, rpn_cls_score, name):
     with tf.variable_scope(name) as scope:
-      rpn_labels, rpn_bbox_targets, rpn_bbox_inside_weights, rpn_bbox_outside_weights = tf.py_func(
-        anchor_target_layer,
-        [rpn_cls_score, self._gt_boxes, self._im_info, self._feat_stride, self._anchors, self._num_anchors],
-        [tf.float32, tf.float32, tf.float32, tf.float32],
-        name="anchor_target")
+      if not cfg.TRAIN.RPN_FL_CE_FUSION:
+        rpn_labels, rpn_bbox_targets, rpn_bbox_inside_weights, rpn_bbox_outside_weights = tf.py_func(
+          anchor_target_layer,
+          [rpn_cls_score, self._gt_boxes, self._im_info, self._feat_stride, self._anchors, self._num_anchors],
+          [tf.float32, tf.float32, tf.float32, tf.float32],
+          name="anchor_target")
+      else:
+        rpn_labels_fl, rpn_labels, rpn_bbox_targets, rpn_bbox_inside_weights, rpn_bbox_outside_weights = tf.py_func(
+          anchor_target_layer,
+          [rpn_cls_score, self._gt_boxes, self._im_info, self._feat_stride, self._anchors, self._num_anchors],
+          [tf.float32, tf.float32, tf.float32, tf.float32, tf.float32],
+          name="anchor_target")
+        rpn_labels_fl = tf.stop_gradient(rpn_labels_fl)
+        rpn_labels_fl.set_shape([cfg.TRAIN.IMS_PER_BATCH, 1, None, None])
+        rpn_labels_fl = tf.to_int32(rpn_labels_fl, name="to_int32")
+        self._anchor_targets['rpn_labels_fl'] = rpn_labels_fl
+
+      rpn_labels = tf.stop_gradient(rpn_labels)
+      rpn_bbox_targets = tf.stop_gradient(rpn_bbox_targets)
+      rpn_bbox_inside_weights = tf.stop_gradient(rpn_bbox_inside_weights)
+      rpn_bbox_outside_weights = tf.stop_gradient(rpn_bbox_outside_weights)
 
       rpn_labels.set_shape([cfg.TRAIN.IMS_PER_BATCH, 1, None, None])
       rpn_bbox_targets.set_shape([cfg.TRAIN.IMS_PER_BATCH, None, None, self._num_anchors * 4])
@@ -276,16 +292,57 @@ class Network(object):
     ))
     return loss_box
 
+  def _focal_loss(self, logits, labels):
+    lbd = cfg.TRAIN.RPN_FL_LAMBDA
+    alpha = cfg.TRAIN.RPN_FL_ALPHA
+    labels = tf.to_float(labels)
+
+    eps_np = np.finfo(np.float32).eps
+    eps_tf = tf.convert_to_tensor(eps_np)
+
+    if cfg.TRAIN.RPN_FL_SOFTMAX:
+      prob = tf.nn.softmax(logits=logits, axis=1)
+      prob_lbd = tf.pow(1 - prob, lbd)
+
+      focal_loss = tf.reduce_sum(-labels * alpha * prob_lbd[:, 1] * tf.log(prob[:, 1]+eps_tf) - \
+                                 (1-labels) * (1-alpha) * prob_lbd[:, 0] * tf.log(prob[:, 0]+eps_tf))
+    else:
+      assert cfg.TRAIN.RPN_FL_ENABLE, 'SigmoidFocalLoss can only be applied to focal loss mode'
+      # need to change the rpn_cls to only one score
+      prob_sgm = tf.nn.sigmoid(logits)
+      # prob_lbd = tf.pow(1 - prob_sgm, lbd)
+      focal_loss = tf.reduce_sum(-labels * alpha * tf.pow(1 - prob_sgm, lbd) * tf.log(prob_sgm+eps_tf) - \
+                                 (1-labels) * (1-alpha) * tf.pow(prob_sgm, lbd) * tf.log((1-prob_sgm+eps_tf)))
+    # normalize with the number of pos
+    focal_loss = tf.divide(cfg.TRAIN.RPN_FL_SCALE*focal_loss, tf.reduce_sum(labels))
+
+    return focal_loss
+
   def _add_losses(self, sigma_rpn=3.0):
     with tf.variable_scope('LOSS_' + self._tag) as scope:
       # RPN, class loss
-      rpn_cls_score = tf.reshape(self._predictions['rpn_cls_score_reshape'], [-1, 2])
+      rpn_cls_score_shape = [-1, 2] if cfg.TRAIN.RPN_FL_SOFTMAX else [-1]
+      rpn_cls_score_ori = tf.reshape(self._predictions['rpn_cls_score_reshape'], rpn_cls_score_shape)
       rpn_label = tf.reshape(self._anchor_targets['rpn_labels'], [-1])
       rpn_select = tf.where(tf.not_equal(rpn_label, -1))
-      rpn_cls_score = tf.reshape(tf.gather(rpn_cls_score, rpn_select), [-1, 2])
+      rpn_cls_score = tf.reshape(tf.gather(rpn_cls_score_ori, rpn_select), [-1, 2])
       rpn_label = tf.reshape(tf.gather(rpn_label, rpn_select), [-1])
-      rpn_cross_entropy = tf.reduce_mean(
-        tf.nn.sparse_softmax_cross_entropy_with_logits(logits=rpn_cls_score, labels=rpn_label))
+      if cfg.TRAIN.RPN_FL_ENABLE:
+        if cfg.TRAIN.RPN_FL_CE_FUSION:
+          # fuse focal loss and cross entropy
+          rpn_labels_fl = tf.reshape(self._anchor_targets['rpn_labels_fl'], [-1])
+          rpn_select = tf.where(tf.not_equal(rpn_labels_fl, -1))
+          rpn_cls_score_fl = tf.reshape(tf.gather(rpn_cls_score_ori, rpn_select), rpn_cls_score_shape)
+          rpn_labels_fl = tf.reshape(tf.gather(rpn_labels_fl, rpn_select), [-1])
+
+          rpn_cross_entropy = 0.5 * self._focal_loss(logits=rpn_cls_score_fl, labels=rpn_labels_fl)
+          rpn_cross_entropy += 0.5 * tf.reduce_mean(
+            tf.nn.sparse_softmax_cross_entropy_with_logits(logits=rpn_cls_score, labels=rpn_label))
+        else:
+          rpn_cross_entropy = self._focal_loss(logits=rpn_cls_score, labels=rpn_label)
+      else:
+        rpn_cross_entropy = tf.reduce_mean(
+          tf.nn.sparse_softmax_cross_entropy_with_logits(logits=rpn_cls_score, labels=rpn_label))
 
       # RPN, bbox loss
       rpn_bbox_pred = self._predictions['rpn_bbox_pred']
@@ -312,7 +369,7 @@ class Network(object):
       self._losses['rpn_cross_entropy'] = rpn_cross_entropy
       self._losses['rpn_loss_box'] = rpn_loss_box
 
-      loss = cross_entropy + loss_box + rpn_cross_entropy + rpn_loss_box
+      loss = cross_entropy + loss_box + rpn_cross_entropy + rpn_loss_box * cfg.TRAIN.RPN_LOSS_BOX_SCALE
       regularization_loss = tf.add_n(tf.losses.get_regularization_losses(), 'regu')
       self._losses['total_loss'] = loss + regularization_loss
 
@@ -321,17 +378,36 @@ class Network(object):
     return loss
 
   def _region_proposal(self, net_conv, is_training, initializer):
-    rpn = slim.conv2d(net_conv, cfg.RPN_CHANNELS, [3, 3], trainable=is_training, weights_initializer=initializer,
-                        scope="rpn_conv/3x3")
-    self._act_summaries.append(rpn)
-    rpn_cls_score = slim.conv2d(rpn, self._num_anchors * 2, [1, 1], trainable=is_training,
+    if not cfg.TRAIN.RPN_DECOUPLE:
+      rpn = slim.conv2d(net_conv, cfg.RPN_CHANNELS, [3, 3], trainable=is_training, weights_initializer=initializer,
+                          scope="rpn_conv/3x3")
+      self._act_summaries.append(rpn)
+    else:
+      # decouple cls and reg, with two conv layers
+      rpn_cls = slim.conv2d(net_conv, cfg.RPN_CHANNELS//2, [3, 3], trainable=is_training, weights_initializer=initializer,
+                        scope="rpn_conv_cls/3x3")
+      rpn_reg = slim.conv2d(net_conv, cfg.RPN_CHANNELS//2, [3, 3], trainable=is_training, weights_initializer=initializer,
+                        scope="rpn_conv_reg/3x3")
+      self._act_summaries.append(rpn_cls)
+      self._act_summaries.append(rpn_reg)
+
+    rpn_cls_score_dim = 2 if cfg.TRAIN.RPN_FL_SOFTMAX else 1
+
+    rpn = rpn if not cfg.TRAIN.RPN_DECOUPLE else rpn_cls
+    rpn_cls_score = slim.conv2d(rpn, self._num_anchors * rpn_cls_score_dim, [1, 1], trainable=is_training,
                                 weights_initializer=initializer,
                                 padding='VALID', activation_fn=None, scope='rpn_cls_score')
     # change it so that the score has 2 as its channel size
-    rpn_cls_score_reshape = self._reshape_layer(rpn_cls_score, 2, 'rpn_cls_score_reshape')
-    rpn_cls_prob_reshape = self._softmax_layer(rpn_cls_score_reshape, "rpn_cls_prob_reshape")
-    rpn_cls_pred = tf.argmax(tf.reshape(rpn_cls_score_reshape, [-1, 2]), axis=1, name="rpn_cls_pred")
-    rpn_cls_prob = self._reshape_layer(rpn_cls_prob_reshape, self._num_anchors * 2, "rpn_cls_prob")
+    rpn_cls_score_reshape = self._reshape_layer(rpn_cls_score, rpn_cls_score_dim, 'rpn_cls_score_reshape')
+    if cfg.TRAIN.RPN_FL_SOFTMAX:
+      rpn_cls_prob_reshape = self._softmax_layer(rpn_cls_score_reshape, "rpn_cls_prob_reshape")
+      rpn_cls_pred = tf.argmax(tf.reshape(rpn_cls_score_reshape, [-1, 2]), axis=1, name="rpn_cls_pred")
+    else:
+      rpn_cls_prob_reshape = tf.nn.sigmoid(rpn_cls_score_reshape, "rpn_cls_prob_reshape")
+      rpn_cls_pred = tf.argmax(tf.reshape(rpn_cls_score_reshape, [-1]), name="rpn_cls_pred")
+
+    rpn_cls_prob = self._reshape_layer(rpn_cls_prob_reshape, self._num_anchors * rpn_cls_score_dim, "rpn_cls_prob")
+    rpn = rpn if not cfg.TRAIN.RPN_DECOUPLE else rpn_reg
     rpn_bbox_pred = slim.conv2d(rpn, self._num_anchors * 4, [1, 1], trainable=is_training,
                                 weights_initializer=initializer,
                                 padding='VALID', activation_fn=None, scope='rpn_bbox_pred')
@@ -343,9 +419,11 @@ class Network(object):
         rois, _ = self._proposal_target_layer(rois, roi_scores, "rpn_rois")
     else:
       if cfg.TEST.MODE == 'nms':
-        rois, _ = self._proposal_layer(rpn_cls_prob, rpn_bbox_pred, "rois")
+        rois, rpn_scores = self._proposal_layer(rpn_cls_prob, rpn_bbox_pred, "rois")
+        self._predictions["rpn_scores"] = rpn_scores
       elif cfg.TEST.MODE == 'top':
-        rois, _ = self._proposal_top_layer(rpn_cls_prob, rpn_bbox_pred, "rois")
+        rois, rpn_scores = self._proposal_top_layer(rpn_cls_prob, rpn_bbox_pred, "rois")
+        self._predictions["rpn_scores"] = rpn_scores
       else:
         raise NotImplementedError
 
@@ -477,6 +555,17 @@ class Network(object):
                                                      self._predictions['rois']],
                                                     feed_dict=feed_dict)
     return cls_score, cls_prob, bbox_pred, rois
+
+  # extract output (cls prob and bbox) of RPN for recall evaluation
+  # only useful during testing mode
+  def extract_rpn(self, sess, image, im_info):
+    feed_dict = {self._image: image,
+                 self._im_info: im_info}
+
+    rpn_rois, rpn_scores = sess.run([self._predictions['rois'],
+                                     self._predictions["rpn_scores"]],
+                                    feed_dict=feed_dict)
+    return rpn_rois, rpn_scores
 
   def get_summary(self, sess, blobs):
     feed_dict = {self._image: blobs['data'], self._im_info: blobs['im_info'],
