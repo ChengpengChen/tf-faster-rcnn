@@ -34,16 +34,18 @@ With Resnet01 (last ``conv4``, coco):
 This update brings [Focal Loss](https://github.com/rbgirshick/py-faster-rcnn) support for RPN. Set ``TRAIN.RPN_FL_ENABLE True`` to enable it. More parameter settings about focal loss can be viewed in ``lib/model/config.py``.
 Results of Faster RCNN with VGG16 equipped with focal loss in RPN:
   - Pascal VOC 2007
-  |  -  | mAP | 
-  | -------- | --------- |
+
+  |    | mAP | 
+  | ------------- | ------------- |
   | baseline | 70.9 |
   | FL-sigmoid | 70.8 |
   | FL-softmax | **71.2** |
   | baseline+FL | **71.2** |
 
   - COCO 2014
-  |  - | mAP | AP-.5 | AP-.75 | AP-S | AP-M | AP-L |
-  | ------ | ------ | ------ | ------ | ------ | ------ | ------ |
+
+  |    | mAP | AP-.5 | AP-.75 | AP-S | AP-M | AP-L |
+  | ------------- | ------------- | ------------- | ------------- | ------------- | ------------- | ------------- |
   | baseline | 26.5 | 46.7 | 27.2 | 11.8 | 30.4 | 37.5 |
   | FL-softmax | 26.6 | 46.7 | 27.4 | 12.0 | 30.9 | 37.3 |
   | baseline+FL | **27.0** | 47.5| 27.7 | 12.0 | 30.9 | 37.3 |
