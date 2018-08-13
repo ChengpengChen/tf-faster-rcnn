@@ -1,6 +1,6 @@
 ### Multi-image version of Faster-RCNN
 
-Forked version for multi image traing support!
+Forked version for multi image training support!
   ```Shell
   ./experiments/scripts/test_faster_rcnn.sh $GPU_ID pascal_voc_0712 res101 TRAIN.IMS_PER_BATCH 2 TRAIN.USE_E2E_TF False
   ```
@@ -19,7 +19,7 @@ With Resnet101 (last ``conv4``, coco, 350k/490k):
   | 2 | 512 | 0.0001 | 0.92s/iter | **34.0** |
   | 2 | 512 | 0.0002 | 0.92s/iter | **34.5** |
 
-With Resnet01 (last ``conv4``, coco):
+With Resnet101 (last ``conv4``, coco):
 
   | IMS_PER_BATCH  | BATCH_SIZE | base lr | iter | mAP |
   | ------------- | ------------- | ------------- | ------------- | ------------- |
@@ -31,9 +31,9 @@ With Resnet01 (last ``conv4``, coco):
   - The result **35.4** of ``900k/1190k`` is taken from the original implementation.
 
 ### Update(0803): Focal loss for RPN
-This update brings [Focal Loss](https://github.com/rbgirshick/py-faster-rcnn) support for RPN. Set ``TRAIN.RPN_FL_ENABLE True`` to enable it. More parameter settings about focal loss can be viewed in ``lib/model/config.py``.
+This update brings [Focal Loss](https://arxiv.org/pdf/1708.02002.pdf) support for RPN. Set ``TRAIN.RPN_FL_ENABLE True`` to enable it. More parameter settings about focal loss can be viewed in ``lib/model/config.py``.
 Results of Faster RCNN with VGG16 equipped with focal loss in RPN:
-  - Pascal VOC 2007
+  - Pascal VOC 2007 (50k/70k)
 
   |    | mAP | 
   | ------------- | ------------- |
@@ -42,13 +42,13 @@ Results of Faster RCNN with VGG16 equipped with focal loss in RPN:
   | FL-softmax | **71.2** |
   | baseline+FL | **71.2** |
 
-  - COCO 2014
+  - COCO 2014 (350k/490k)
 
   |    | mAP | AP-.5 | AP-.75 | AP-S | AP-M | AP-L |
   | ------------- | ------------- | ------------- | ------------- | ------------- | ------------- | ------------- |
   | baseline | 26.5 | 46.7 | 27.2 | 11.8 | 30.4 | 37.5 |
   | FL-softmax | 26.6 | 46.7 | 27.4 | 12.0 | 30.9 | 37.3 |
-  | baseline+FL | **27.0** | 47.5| 27.7 | 12.0 | 30.9 | 37.3 |
+  | baseline+FL | **27.0** | 47.5| 27.7 | 12.0 | 30.8 | 37.9 |
 
 # tf-faster-rcnn
 A Tensorflow implementation of faster RCNN detection framework by Xinlei Chen (xinleic@cs.cmu.edu). This repository is based on the python Caffe implementation of faster RCNN available [here](https://github.com/rbgirshick/py-faster-rcnn).
